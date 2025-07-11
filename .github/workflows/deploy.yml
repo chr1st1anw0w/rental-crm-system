@@ -1,0 +1,144 @@
+name: 🚀 部署房源 CRM 系統
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  # 建置和測試
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x, 20.x]
+    
+    steps:
+    - name: 📥 檢出代碼
+      uses: actions/checkout@v4
+      
+    - name: 🟢 設定 Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        
+    - name: 📦 安裝依賴
+      run: npm ci
+      
+    - name: 🧪 運行測試
+      run: npm test --if-present
+      
+    - name: 🔍 代碼檢查
+      run: npm run lint --if-present
+      
+    - name: 🏗️ 建置專案
+      run: |
+        npm run build --if-present
+        echo "建置完成於 $(date)"
+
+  # GitHub Pages 部署 (僅在 main/master 分支)
+  deploy-pages:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+      
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+      
+    steps:
+    - name: 📥 檢出代碼
+      uses: actions/checkout@v4
+      
+    - name: 🟢 設定 Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+        
+    - name: 📦 安裝依賴
+      run: npm ci
+      
+    - name: 🏗️ 建置靜態檔案
+      run: |
+        # 創建建置目錄
+        mkdir -p dist
+        
+        # 複製靜態檔案
+        cp -r public/* dist/
+        cp -r assets dist/
+        
+        # 創建基本的靜態版本
+        echo "房源 CRM 系統 - GitHub Pages 版本" > dist/CNAME
+        
+        # 更新 HTML 中的路徑
+        sed -i 's|../assets/|./assets/|g' dist/index.html
+        
+        echo "✅ 靜態檔案建置完成"
+        
+    - name: 📄 設定 Pages
+      uses: actions/configure-pages@v4
+      
+    - name: 📤 上傳 Pages 資源
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: './dist'
+        
+    - name: 🚀 部署到 GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+  # Docker 建置 (可選)
+  build-docker:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: 📥 檢出代碼
+      uses: actions/checkout@v4
+      
+    - name: 🐳 設定 Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: 🔑 登入 Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+      if: ${{ secrets.DOCKER_USERNAME && secrets.DOCKER_PASSWORD }}
+      
+    - name: 🏗️ 建置並推送 Docker 映像
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: ${{ secrets.DOCKER_USERNAME && secrets.DOCKER_PASSWORD }}
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/rental-crm:latest
+          ${{ secrets.DOCKER_USERNAME }}/rental-crm:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # 通知
+  notify:
+    needs: [build-and-test, deploy-pages]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: 📢 部署狀態通知
+      run: |
+        if [ "${{ needs.deploy-pages.result }}" == "success" ]; then
+          echo "🎉 部署成功！"
+          echo "🌐 訪問地址: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+        else
+          echo "❌ 部署失敗"
+        fi

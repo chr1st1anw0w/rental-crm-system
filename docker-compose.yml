@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # 房源 CRM 主應用
+  rental-crm:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - crm-network
+
+  # Nginx 反向代理 (可選)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - rental-crm
+    restart: unless-stopped
+    networks:
+      - crm-network
+    profiles:
+      - production
+
+  # Redis 快取 (可選)
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - crm-network
+    profiles:
+      - cache
+
+  # 監控服務 (可選)
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 30 --cleanup
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+networks:
+  crm-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local
+
+# 使用範例:
+# 基本啟動: docker-compose up
+# 生產模式: docker-compose --profile production up
+# 含快取: docker-compose --profile cache up
+# 完整版: docker-compose --profile production --profile cache --profile monitoring up
