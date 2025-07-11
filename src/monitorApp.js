@@ -307,9 +307,13 @@ class NotionMonitorApp {
         
         this.logger.info(`✅ 成功處理連結: ${link.url} -> 頁面 ID: ${result.notionPageId}`);
       } else {
-        // 在監控頁面添加失敗記錄
-        await this.addProcessingRecord(link, result, result.reason || '失敗');
-        
+        // 檢查是否為網路錯誤，如果是則標記為待手動處理
+        const isNetworkError = result.error && result.error.includes('net::ERR_');
+        const status = isNetworkError ? '待手動處理 (自動爬蟲暫時無法使用)' : (result.reason || '失敗');
+
+        // 在監控頁面添加記錄
+        await this.addProcessingRecord(link, result, status);
+
         this.logger.warn(`⚠️ 連結處理失敗: ${link.url} - ${result.reason || result.error}`);
       }
 
