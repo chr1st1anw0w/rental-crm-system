@@ -1,5 +1,5 @@
 # 房源 CRM 系統 - App Blueprint 架構藍圖
-
+https://github.com/chr1st1anw0w/rental-crm-system
 ## 📐 系統架構藍圖
 
 ### 🎯 核心設計原則
